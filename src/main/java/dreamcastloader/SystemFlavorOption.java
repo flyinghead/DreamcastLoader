@@ -14,13 +14,14 @@ public class SystemFlavorOption extends Option {
 	private String[] items = new String[] {
 			"Dreamcast",
 			"Atomiswave",
-			"Naomi"
+			"Naomi",
+			"Naomi2",
 	};
 	
 	private JComboBox<String> editor = new JComboBox<>(items);
 
 	public SystemFlavorOption(String name, Object value) {
-		super(name, SystemFlavorOption.class, value, Loader.COMMAND_LINE_ARG_PREFIX + "-flavor", null);
+		super(name, String.class, value, Loader.COMMAND_LINE_ARG_PREFIX + "-flavor", null);
 
 		selected = value == null ? items[0] : value.toString();
 		editor.setSelectedItem(selected);

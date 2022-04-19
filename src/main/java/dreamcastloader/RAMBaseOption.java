@@ -19,7 +19,7 @@ public class RAMBaseOption extends Option {
 	private JComboBox<String> editor = new JComboBox<>(items);
 
 	public RAMBaseOption(String name, Object value) {
-		super(name, RAMBaseOption.class, value, Loader.COMMAND_LINE_ARG_PREFIX + "-ramStart", null);
+		super(name, String.class, value, Loader.COMMAND_LINE_ARG_PREFIX + "-ramStart", null);
 		
 		selected = value == null ? items[0] : value.toString();
 		editor.setSelectedItem(selected);

@@ -55,7 +55,8 @@ public class DreamcastLoader extends BaseLoader {
 	enum Flavor {
 		Dreamcast,
 		Atomiswave,
-		Naomi
+		Naomi,
+		Naomi2
 	}
 	private Flavor flavor = Flavor.Dreamcast;
 
@@ -92,19 +93,25 @@ public class DreamcastLoader extends BaseLoader {
 	{
 		FlatProgramAPI fpa = new FlatProgramAPI(program);
 		createSegments(fpa, log);
-		createSegment(fpa, null, "ROM", 0xA0000000, flavor == Flavor.Atomiswave ? 128 * KB : 2 * MB, false, true, log);
-		createSegment(fpa, null, "FLASH", 0xA0200000, 128 * KB, true, false, log);
-		createSegment(fpa, null, "AICA_RAM", 0xA0800000, (flavor == Flavor.Dreamcast ? 2 : 8) * MB, true, false, log);
-		createSegment(fpa, null, "VRAM64", 0x84000000, (flavor == Flavor.Naomi ? 16 : 8) * MB, true, false, log);
-		createSegment(fpa, null, "VRAM32", 0x85000000, (flavor == Flavor.Naomi ? 16 : 8) * MB, true, false, log);
+		createSegment(fpa, null, "ROM", 0xA0000000L, flavor == Flavor.Atomiswave ? 128 * KB : 2 * MB, false, true, log);
+		createSegment(fpa, null, "FLASH", 0xA0200000L, 128 * KB, true, false, log);
+		createSegment(fpa, null, "AICA_RAM", 0xA0800000L, (flavor == Flavor.Dreamcast ? 2 : 8) * MB, true, false, log);
+		createSegment(fpa, null, "VRAM64", 0x84000000L, (flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? 16 : 8) * MB, true, false, log);
+		createSegment(fpa, null, "VRAM32", 0x85000000L, (flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? 16 : 8) * MB, true, false, log);
+		if (flavor == Flavor.Naomi2) {
+			createSegment(fpa, null, "VRAM64_2", 0x86000000L, 16 * MB, true, false, log);
+			createSegment(fpa, null, "VRAM32_2", 0x87000000L, 16 * MB, true, false, log);
+			createSegment(fpa, null, "ERAM", 0xAA000000L, 32 * MB, true, false, log);
+			createSegment(fpa, null, "ELANCMD", 0xA9000000L, 1 * MB, true, false, log);
+		}
 		
 		InputStream ramStream = provider.getInputStream(0L);
-		createSegment(fpa, ramStream, "RAM", ramBase, flavor == Flavor.Naomi ? RAM_SIZE * 2 : RAM_SIZE, true, true, log);
+		createSegment(fpa, ramStream, "RAM", ramBase, flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? RAM_SIZE * 2 : RAM_SIZE, true, true, log);
 		
 		long entryPoint;
 		if (flavor == Flavor.Dreamcast)
 			entryPoint = ramBase + 0x8300;
-		else if (flavor == Flavor.Naomi)
+		else if (flavor == Flavor.Naomi || flavor == Flavor.Naomi2)
 			entryPoint = ramBase + 0x21000;
 		else
 			entryPoint = ramBase + 0x10200;
@@ -161,6 +168,8 @@ public class DreamcastLoader extends BaseLoader {
 					flavor = Flavor.Atomiswave;
 				else if (Flavor.Naomi.name().equals(option.getValue()))
 					flavor = Flavor.Naomi;
+				else if (Flavor.Naomi2.name().equals(option.getValue()))
+					flavor = Flavor.Naomi2;
 				else
 					flavor = Flavor.Dreamcast;
 			}
@@ -168,7 +177,7 @@ public class DreamcastLoader extends BaseLoader {
 				String v = (String)option.getValue();
 				if (v.isEmpty())
 				{
-					vbr = flavor == Flavor.Naomi ? 0x8C000000l : 0x8c00f400l;
+					vbr = flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? 0x8C000000l : 0x8c00f400l;
 				}
 				else
 				{
@@ -222,12 +231,18 @@ public class DreamcastLoader extends BaseLoader {
 		createScifSegment(fpa, log);
 		createHudiSegment(fpa, log);
 		createHollyRegsSegment(fpa, log);
-		createPvrRegsSegment(fpa, log);
+		createPvrRegsSegment(fpa, log, "PVR", 0xA05F8000L);
+		if (flavor == Flavor.Naomi2) {
+			createHolly2RegsSegment(fpa, log, "HOLLY2", 0xA25F6900L);
+			createHolly2RegsSegment(fpa, log, "HOLLY_B", 0xA85F6900L);
+			createPvrRegsSegment(fpa, log, "PVR2", 0xA25F8000L);
+			createPvrRegsSegment(fpa, log, "PVR_B", 0xA85F8000L);
+		}
 		if (flavor == Flavor.Atomiswave)
 			createAtomiswaveRegisters(fpa, log);
 		else if (flavor == Flavor.Dreamcast)
 			createGDRomRegisters(fpa, log);
-		else if (flavor == Flavor.Naomi)
+		else if (flavor == Flavor.Naomi || flavor == Flavor.Naomi2)
 			createNaomiRegisters(fpa, log);
 		createAicaRegisters(fpa, true, log);
 	}
@@ -408,6 +423,23 @@ public class DreamcastLoader extends BaseLoader {
 		createNamedDword(fpa, 0xFFF00008L, "SDDR", "Data register", log, ns);
 	}
 
+	private static void createHolly2RegsSegment(FlatProgramAPI fpa, MessageLog log, String name, long baseAddress) {
+		createSegment(fpa, null, name, baseAddress, 0x40, true, false, log);
+		Namespace ns = createNamespace(fpa, name, log);
+		createNamedDword(fpa, baseAddress + 0x00, "SB_ISTNRM", "Normal interrupt status", log, ns);
+		createNamedDword(fpa, baseAddress + 0x04, "SB_ISTEXT", "External interrupt status", log, ns);
+		createNamedDword(fpa, baseAddress + 0x08, "SB_ISTERR", "Error interrupt status", log, ns);
+		createNamedDword(fpa, baseAddress + 0x10, "SB_IML2NRM", "Level 2 normal interrupt mask", log, ns);
+		createNamedDword(fpa, baseAddress + 0x14, "SB_IML2EXT", "Level 2 external interrupt mask", log, ns);
+		createNamedDword(fpa, baseAddress + 0x18, "SB_IML2ERR", "Level 2 error interrupt mask", log, ns);
+		createNamedDword(fpa, baseAddress + 0x20, "SB_IML4NRM", "Level 4 normal interrupt mask", log, ns);
+		createNamedDword(fpa, baseAddress + 0x24, "SB_IML4EXT", "Level 4 external interrupt mask", log, ns);
+		createNamedDword(fpa, baseAddress + 0x28, "SB_IML4ERR", "Level 4 error interrupt mask", log, ns);
+		createNamedDword(fpa, baseAddress + 0x30, "SB_IML6NRM", "Level 6 normal interrupt mask", log, ns);
+		createNamedDword(fpa, baseAddress + 0x34, "SB_IML6EXT", "Level 6 external interrupt mask", log, ns);
+		createNamedDword(fpa, baseAddress + 0x38, "SB_IML6ERR", "Level 6 error interrupt mask", log, ns);
+	}
+
 	private static void createHollyRegsSegment(FlatProgramAPI fpa, MessageLog log) {
 		createSegment(fpa, null, "HOLLY", 0xA05F6800L, 0x1500, true, false, log);
 		Namespace ns = createNamespace(fpa, "HOLLY", log);
@@ -560,86 +592,86 @@ public class DreamcastLoader extends BaseLoader {
 		createNamedDword(fpa, 0xA05F7CF8L, "SB_PDLEND", "PVR-DMA transfer counter", log, ns);
 	}
 	
-	private static void createPvrRegsSegment(FlatProgramAPI fpa, MessageLog log) {
-		createSegment(fpa, null, "PVR", 0xA05F8000L, 0x2000, true, false, log);
-		Namespace ns = createNamespace(fpa, "PVR", log);
-		createNamedDword(fpa, 0xA05F8000L, "ID", "Device ID", log, ns);
-		createNamedDword(fpa, 0xA05F8004L, "REVISION", "", log, ns);
-		createNamedDword(fpa, 0xA05F8008L, "SOFTRESET", "CORE & TA software reset", log, ns);
-		createNamedDword(fpa, 0xA05F8014L, "STARTRENDER", "Drawing start", log, ns);
-		createNamedDword(fpa, 0xA05F8018L, "TEST_SELECT", "PVR Test", log, ns);
-		createNamedDword(fpa, 0xA05F8020L, "PARAM_BASE", "Base address for ISP parameters", log, ns);
-		createNamedDword(fpa, 0xA05F802CL, "REGION_BASE", "Base address for Region Array", log, ns);
-		createNamedDword(fpa, 0xA05F8030L, "SPAN_SORT_CFG", "Span Sorter control", log, ns);
-		createNamedDword(fpa, 0xA05F8040L, "VO_BORDER_COL", "Border area color", log, ns);
-		createNamedDword(fpa, 0xA05F8044L, "FB_R_CTRL", "Frame buffer read control", log, ns);
-		createNamedDword(fpa, 0xA05F8048L, "FB_W_CTRL", "Frame buffer write control", log, ns);
-		createNamedDword(fpa, 0xA05F804CL, "FB_W_LINESTRIDE", "Frame buffer line stride", log, ns);
-		createNamedDword(fpa, 0xA05F8050L, "FB_R_SOF1", "Read start address for field/strip 1", log, ns);
-		createNamedDword(fpa, 0xA05F8054L, "FB_R_SOF2", "Read start address for field/strip 2", log, ns);
-		createNamedDword(fpa, 0xA05F805CL, "FB_R_SIZE", "Frame buffer XY size", log, ns);
-		createNamedDword(fpa, 0xA05F8060L, "FB_W_SOF1", "Write start address for field/strip 1", log, ns);
-		createNamedDword(fpa, 0xA05F8064L, "FB_W_SOF2", "Write start address for field/strip 2", log, ns);
-		createNamedDword(fpa, 0xA05F8068L, "FB_X_CLIP", "Pixel clip X coordinate", log, ns);
-		createNamedDword(fpa, 0xA05F806CL, "FB_Y_CLIP", "Pixel clip Y coordinate", log, ns);
-		createNamedDword(fpa, 0xA05F8074L, "FPU_SHAD_SCALE", "Intensity Volume mode", log, ns);
-		createNamedDword(fpa, 0xA05F8078L, "FPU_CULL_VAL", "Comparison value for culling", log, ns);
-		createNamedDword(fpa, 0xA05F807CL, "FPU_PARAM_CFG", "Parameter read control", log, ns);
-		createNamedDword(fpa, 0xA05F8080L, "HALF_OFFSET", "Pixel sampling control", log, ns);
-		createNamedDword(fpa, 0xA05F8084L, "FPU_PERP_VAL", "Comparison value for perpendicular polygons", log, ns);
-		createNamedDword(fpa, 0xA05F8088L, "ISP_BACKGND_D", "Background surface depth", log, ns);
-		createNamedDword(fpa, 0xA05F808CL, "ISP_BACKGND_T", "Background surface tag", log, ns);
+	private static void createPvrRegsSegment(FlatProgramAPI fpa, MessageLog log, String name, long baseAddress) {
+		createSegment(fpa, null, name, baseAddress, 0x2000, true, false, log);
+		Namespace ns = createNamespace(fpa, name, log);
+		createNamedDword(fpa, baseAddress, "ID", "Device ID", log, ns);
+		createNamedDword(fpa, baseAddress + 0x004, "REVISION", "", log, ns);
+		createNamedDword(fpa, baseAddress + 0x008, "SOFTRESET", "CORE & TA software reset", log, ns);
+		createNamedDword(fpa, baseAddress + 0x014, "STARTRENDER", "Drawing start", log, ns);
+		createNamedDword(fpa, baseAddress + 0x018, "TEST_SELECT", "PVR Test", log, ns);
+		createNamedDword(fpa, baseAddress + 0x020, "PARAM_BASE", "Base address for ISP parameters", log, ns);
+		createNamedDword(fpa, baseAddress + 0x02C, "REGION_BASE", "Base address for Region Array", log, ns);
+		createNamedDword(fpa, baseAddress + 0x030, "SPAN_SORT_CFG", "Span Sorter control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x040, "VO_BORDER_COL", "Border area color", log, ns);
+		createNamedDword(fpa, baseAddress + 0x044, "FB_R_CTRL", "Frame buffer read control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x048, "FB_W_CTRL", "Frame buffer write control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x04C, "FB_W_LINESTRIDE", "Frame buffer line stride", log, ns);
+		createNamedDword(fpa, baseAddress + 0x050, "FB_R_SOF1", "Read start address for field/strip 1", log, ns);
+		createNamedDword(fpa, baseAddress + 0x054, "FB_R_SOF2", "Read start address for field/strip 2", log, ns);
+		createNamedDword(fpa, baseAddress + 0x05C, "FB_R_SIZE", "Frame buffer XY size", log, ns);
+		createNamedDword(fpa, baseAddress + 0x060, "FB_W_SOF1", "Write start address for field/strip 1", log, ns);
+		createNamedDword(fpa, baseAddress + 0x064, "FB_W_SOF2", "Write start address for field/strip 2", log, ns);
+		createNamedDword(fpa, baseAddress + 0x068, "FB_X_CLIP", "Pixel clip X coordinate", log, ns);
+		createNamedDword(fpa, baseAddress + 0x06C, "FB_Y_CLIP", "Pixel clip Y coordinate", log, ns);
+		createNamedDword(fpa, baseAddress + 0x074, "FPU_SHAD_SCALE", "Intensity Volume mode", log, ns);
+		createNamedDword(fpa, baseAddress + 0x078, "FPU_CULL_VAL", "Comparison value for culling", log, ns);
+		createNamedDword(fpa, baseAddress + 0x07C, "FPU_PARAM_CFG", "Parameter read control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x080, "HALF_OFFSET", "Pixel sampling control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x084, "FPU_PERP_VAL", "Comparison value for perpendicular polygons", log, ns);
+		createNamedDword(fpa, baseAddress + 0x088, "ISP_BACKGND_D", "Background surface depth", log, ns);
+		createNamedDword(fpa, baseAddress + 0x08C, "ISP_BACKGND_T", "Background surface tag", log, ns);
 
-		createNamedDword(fpa, 0xA05F8098L, "ISP_FEED_CFG", "Translucent polygon sort mode", log, ns);
-		createNamedDword(fpa, 0xA05F80A0L, "SDRAM_REFRESH", "Texture memory refresh counter", log, ns);
-		createNamedDword(fpa, 0xA05F80A4L, "SDRAM_ARB_CFG", "Texture memory arbiter control", log, ns);
-		createNamedDword(fpa, 0xA05F80A8L, "SDRAM_CFG", "Texture memory control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x098, "ISP_FEED_CFG", "Translucent polygon sort mode", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0A0, "SDRAM_REFRESH", "Texture memory refresh counter", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0A4, "SDRAM_ARB_CFG", "Texture memory arbiter control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0A8, "SDRAM_CFG", "Texture memory control", log, ns);
 
-		createNamedDword(fpa, 0xA05F80B0L, "FOG_COL_RAM", "Color for Look Up table Fog", log, ns);
-		createNamedDword(fpa, 0xA05F80B4L, "FOG_COL_VERT", "Color for vertex Fog", log, ns);
-		createNamedDword(fpa, 0xA05F80B8L, "FOG_DENSITY", "Fog scale value", log, ns);
-		createNamedDword(fpa, 0xA05F80BCL, "FOG_CLAMP_MAX", "Color clamping maximum value", log, ns);
-		createNamedDword(fpa, 0xA05F80C0L, "FOG_CLAMP_MIN", "Color clamping minimum value", log, ns);
-		createNamedDword(fpa, 0xA05F80C4L, "SPG_TRIGGER_POS", "External trigger signal HV counter value", log, ns);
-		createNamedDword(fpa, 0xA05F80C8L, "SPG_HBLANK_INT", "H-blank interrupt control", log, ns);
-		createNamedDword(fpa, 0xA05F80CCL, "SPG_VBLANK_INT", "V-blank interrupt control	", log, ns);
-		createNamedDword(fpa, 0xA05F80D0L, "SPG_CONTROL", "Sync pulse generator control", log, ns);
-		createNamedDword(fpa, 0xA05F80D4L, "SPG_HBLANK", "H-blank control", log, ns);
-		createNamedDword(fpa, 0xA05F80D8L, "SPG_LOAD", "HV counter load value", log, ns);
-		createNamedDword(fpa, 0xA05F80DCL, "SPG_VBLANK", "V-blank control", log, ns);
-		createNamedDword(fpa, 0xA05F80E0L, "SPG_WIDTH", "Sync width control", log, ns);
-		createNamedDword(fpa, 0xA05F80E4L, "TEXT_CONTROL", "Texturing control", log, ns);
-		createNamedDword(fpa, 0xA05F80E8L, "VO_CONTROL", "Video output control", log, ns);
-		createNamedDword(fpa, 0xA05F80ECL, "VO_STARTX", "Video output start X position", log, ns);
-		createNamedDword(fpa, 0xA05F80F0L, "VO_STARTY", "Video output start Y position", log, ns);
-		createNamedDword(fpa, 0xA05F80F4L, "SCALER_CTL", "X & Y scaler control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0B0, "FOG_COL_RAM", "Color for Look Up table Fog", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0B4, "FOG_COL_VERT", "Color for vertex Fog", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0B8, "FOG_DENSITY", "Fog scale value", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0BC, "FOG_CLAMP_MAX", "Color clamping maximum value", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0C0, "FOG_CLAMP_MIN", "Color clamping minimum value", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0C4, "SPG_TRIGGER_POS", "External trigger signal HV counter value", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0C8, "SPG_HBLANK_INT", "H-blank interrupt control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0CC, "SPG_VBLANK_INT", "V-blank interrupt control	", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0D0, "SPG_CONTROL", "Sync pulse generator control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0D4, "SPG_HBLANK", "H-blank control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0D8, "SPG_LOAD", "HV counter load value", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0DC, "SPG_VBLANK", "V-blank control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0E0, "SPG_WIDTH", "Sync width control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0E4, "TEXT_CONTROL", "Texturing control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0E8, "VO_CONTROL", "Video output control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0EC, "VO_STARTX", "Video output start X position", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0F0, "VO_STARTY", "Video output start Y position", log, ns);
+		createNamedDword(fpa, baseAddress + 0x0F4, "SCALER_CTL", "X & Y scaler control", log, ns);
 
-		createNamedDword(fpa, 0xA05F8108L, "PAL_RAM_CTRL", "Palette RAM control", log, ns);
-		createNamedDword(fpa, 0xA05F810CL, "SPG_STATUS", "Sync pulse generator status", log, ns);
-		createNamedDword(fpa, 0xA05F8110L, "FB_BURSTCTRL", "Frame buffer burst control", log, ns);
-		createNamedDword(fpa, 0xA05F8114L, "FB_C_SOF", "Current frame buffer start address", log, ns);
-		createNamedDword(fpa, 0xA05F8118L, "Y_COEFF", "Y scaling coefficient", log, ns);
-		createNamedDword(fpa, 0xA05F811CL, "PT_ALPHA_REF", "Alpha value for Punch Through polygon comparison", log, ns);
+		createNamedDword(fpa, baseAddress + 0x108, "PAL_RAM_CTRL", "Palette RAM control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x10C, "SPG_STATUS", "Sync pulse generator status", log, ns);
+		createNamedDword(fpa, baseAddress + 0x110, "FB_BURSTCTRL", "Frame buffer burst control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x114, "FB_C_SOF", "Current frame buffer start address", log, ns);
+		createNamedDword(fpa, baseAddress + 0x118, "Y_COEFF", "Y scaling coefficient", log, ns);
+		createNamedDword(fpa, baseAddress + 0x11C, "PT_ALPHA_REF", "Alpha value for Punch Through polygon comparison", log, ns);
 
-		createNamedDword(fpa, 0xA05F8124L, "TA_OL_BASE", "Object list write start address", log, ns);
-		createNamedDword(fpa, 0xA05F8128L, "TA_ISP_BASE", "ISP/TSP Parameter write start address", log, ns);
-		createNamedDword(fpa, 0xA05F812CL, "TA_OL_LIMIT", "Start address of next Object Pointer Block", log, ns);
-		createNamedDword(fpa, 0xA05F8130L, "TA_ISP_LIMIT", "Current ISP/TSP Parameter write address", log, ns);
-		createNamedDword(fpa, 0xA05F8134L, "TA_NEXT_OPB", "Global Tile clip control", log, ns);
-		createNamedDword(fpa, 0xA05F8138L, "TA_ITP_CURRENT", "Current ISP/TSP Parameter write address", log, ns);
-		createNamedDword(fpa, 0xA05F813CL, "TA_GLOB_TILE_CLIP", "Global Tile clip control", log, ns);
-		createNamedDword(fpa, 0xA05F8140L, "TA_ALLOC_CTRL", "Object list control", log, ns);
-		createNamedDword(fpa, 0xA05F8144L, "TA_LIST_INIT", "TA initialization", log, ns);
-		createNamedDword(fpa, 0xA05F8148L, "TA_YUV_TEX_BASE", "YUV422 texture write start address", log, ns);
-		createNamedDword(fpa, 0xA05F814CL, "TA_YUV_TEX_CTRL", "YUV converter control", log, ns);
-		createNamedDword(fpa, 0xA05F8150L, "TA_YUV_TEX_CNT", "YUV converter macro block counter value", log, ns);
+		createNamedDword(fpa, baseAddress + 0x124, "TA_OL_BASE", "Object list write start address", log, ns);
+		createNamedDword(fpa, baseAddress + 0x128, "TA_ISP_BASE", "ISP/TSP Parameter write start address", log, ns);
+		createNamedDword(fpa, baseAddress + 0x12C, "TA_OL_LIMIT", "Start address of next Object Pointer Block", log, ns);
+		createNamedDword(fpa, baseAddress + 0x130, "TA_ISP_LIMIT", "Current ISP/TSP Parameter write address", log, ns);
+		createNamedDword(fpa, baseAddress + 0x134, "TA_NEXT_OPB", "Global Tile clip control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x138, "TA_ITP_CURRENT", "Current ISP/TSP Parameter write address", log, ns);
+		createNamedDword(fpa, baseAddress + 0x13C, "TA_GLOB_TILE_CLIP", "Global Tile clip control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x140, "TA_ALLOC_CTRL", "Object list control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x144, "TA_LIST_INIT", "TA initialization", log, ns);
+		createNamedDword(fpa, baseAddress + 0x148, "TA_YUV_TEX_BASE", "YUV422 texture write start address", log, ns);
+		createNamedDword(fpa, baseAddress + 0x14C, "TA_YUV_TEX_CTRL", "YUV converter control", log, ns);
+		createNamedDword(fpa, baseAddress + 0x150, "TA_YUV_TEX_CNT", "YUV converter macro block counter value", log, ns);
 
-		createNamedDword(fpa, 0xA05F8160L, "TA_LIST_CONT", "TA continuation processing", log, ns);
-		createNamedDword(fpa, 0xA05F8164L, "TA_NEXT_OPB_INIT", "Additional OPB starting address", log, ns);
+		createNamedDword(fpa, baseAddress + 0x160, "TA_LIST_CONT", "TA continuation processing", log, ns);
+		createNamedDword(fpa, baseAddress + 0x164, "TA_NEXT_OPB_INIT", "Additional OPB starting address", log, ns);
 
-		createNamedDwords(fpa, 0xA05F8200L, "FOG_TABLE_START", 128, "Fog table", log, ns);
-		createNamedDwords(fpa, 0xA05F8600L, "TA_OL_POINTERS_START", 600, "TA object List Pointer data", log, ns);
-		createNamedDwords(fpa, 0xA05F9000L, "PALETTE_RAM_START", 1024, "Palette RAM", log, ns);
+		createNamedDwords(fpa, baseAddress + 0x200, "FOG_TABLE_START", 128, "Fog table", log, ns);
+		createNamedDwords(fpa, baseAddress + 0x600, "TA_OL_POINTERS_START", 600, "TA object List Pointer data", log, ns);
+		createNamedDwords(fpa, baseAddress + 0x1000, "PALETTE_RAM_START", 1024, "Palette RAM", log, ns);
 	}
 
 	private static void createAtomiswaveRegisters(FlatProgramAPI fpa, MessageLog log) {
