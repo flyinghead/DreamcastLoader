@@ -6,6 +6,7 @@ import java.awt.event.ItemListener;
 
 import javax.swing.JComboBox;
 
+import ghidra.app.util.AddressFactoryService;
 import ghidra.app.util.Option;
 import ghidra.app.util.opinion.Loader;
 
@@ -21,7 +22,8 @@ public class SystemFlavorOption extends Option {
 	private JComboBox<String> editor = new JComboBox<>(items);
 
 	public SystemFlavorOption(String name, Object value) {
-		super(name, String.class, value, Loader.COMMAND_LINE_ARG_PREFIX + "-flavor", null);
+		super(name, String.class, value, Loader.COMMAND_LINE_ARG_PREFIX + "-flavor", null,
+				"systemFlavor", false, "The hardware platform this program runs on");
 
 		selected = value == null ? items[0] : value.toString();
 		editor.setSelectedItem(selected);
@@ -42,7 +44,7 @@ public class SystemFlavorOption extends Option {
 	}
 
 	@Override
-	public Component getCustomEditorComponent() {
+	public Component getCustomEditorComponent(AddressFactoryService addressFactoryService) {
 		return editor;
 	}
 

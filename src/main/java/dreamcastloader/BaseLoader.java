@@ -20,11 +20,12 @@ package dreamcastloader;
 
 import java.io.InputStream;
 
+import ghidra.app.util.MemoryBlockUtils;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.AbstractLibrarySupportLoader;
 import ghidra.program.flatapi.FlatProgramAPI;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
@@ -47,7 +48,7 @@ public abstract class BaseLoader extends AbstractLibrarySupportLoader {
 		
 		try {
 			fpa.getCurrentProgram().getSymbolTable().createLabel(addr, name, ns, SourceType.IMPORTED);
-			fpa.getCurrentProgram().getListing().setComment(addr, CodeUnit.REPEATABLE_COMMENT, comment);
+			fpa.getCurrentProgram().getListing().setComment(addr, CommentType.REPEATABLE, comment);
 		} catch (InvalidInputException e) {
 			log.appendException(e);
 		}
@@ -65,7 +66,7 @@ public abstract class BaseLoader extends AbstractLibrarySupportLoader {
 		
 		try {
 			fpa.getCurrentProgram().getSymbolTable().createLabel(addr, name, ns, SourceType.IMPORTED);
-			fpa.getCurrentProgram().getListing().setComment(addr, CodeUnit.REPEATABLE_COMMENT, comment);
+			fpa.getCurrentProgram().getListing().setComment(addr, CommentType.REPEATABLE, comment);
 		} catch (InvalidInputException e) {
 			log.appendException(e);
 		}
@@ -83,7 +84,7 @@ public abstract class BaseLoader extends AbstractLibrarySupportLoader {
 		
 		try {
 			fpa.getCurrentProgram().getSymbolTable().createLabel(addr, name, ns, SourceType.IMPORTED);
-			fpa.getCurrentProgram().getListing().setComment(addr, CodeUnit.REPEATABLE_COMMENT, comment);
+			fpa.getCurrentProgram().getListing().setComment(addr, CommentType.REPEATABLE, comment);
 		} catch (InvalidInputException e) {
 			log.appendException(e);
 		}
@@ -101,7 +102,7 @@ public abstract class BaseLoader extends AbstractLibrarySupportLoader {
 		
 		try {
 			fpa.getCurrentProgram().getSymbolTable().createLabel(addr, name, ns, SourceType.IMPORTED);
-			fpa.getCurrentProgram().getListing().setComment(addr, CodeUnit.REPEATABLE_COMMENT, comment);
+			fpa.getCurrentProgram().getListing().setComment(addr, CommentType.REPEATABLE, comment);
 		} catch (InvalidInputException e) {
 			log.appendException(e);
 		}
@@ -117,6 +118,13 @@ public abstract class BaseLoader extends AbstractLibrarySupportLoader {
 		} catch (Exception e) {
 			log.appendException(e);
 		}
+	}
+	
+	protected static void createMirror(FlatProgramAPI fpa, String name, long start, long base, long length, String comment, 
+			boolean write, boolean execute, MessageLog log)
+	{
+		MemoryBlockUtils.createByteMappedBlock(fpa.getCurrentProgram(), name, fpa.toAddr(start), fpa.toAddr(base), (int)length,
+				comment, "", true, write, execute, false, log);
 	}
 	
 	protected static Namespace createNamespace(FlatProgramAPI fpa, String name, MessageLog log) {

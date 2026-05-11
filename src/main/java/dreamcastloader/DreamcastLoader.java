@@ -28,6 +28,7 @@ import ghidra.app.util.Option;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.app.util.importer.options.StringOption;
 import ghidra.app.util.opinion.LoadSpec;
 import ghidra.app.util.opinion.Loader;
 import ghidra.framework.model.DomainObject;
@@ -39,7 +40,6 @@ import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.LittleEndianDataConverter;
 import ghidra.util.exception.CancelledException;
-import ghidra.util.task.TaskMonitor;
 
 /**
  * Sega Dreamcast/Naomi/Atomiswave RAM dump loader
@@ -87,26 +87,31 @@ public class DreamcastLoader extends BaseLoader {
 	}
 
 	@Override
-	protected void load(ByteProvider provider, LoadSpec loadSpec, List<Option> options,
-			Program program, TaskMonitor monitor, MessageLog log)
-			throws CancelledException, IOException
+	protected void load(Program program, ImporterSettings settings) throws CancelledException, IOException
 	{
 		FlatProgramAPI fpa = new FlatProgramAPI(program);
+		MessageLog log = settings.log();
+		ByteProvider provider = settings.provider();
 		createSegments(fpa, log);
 		createSegment(fpa, null, "ROM", 0xA0000000L, flavor == Flavor.Atomiswave ? 128 * KB : 2 * MB, false, true, log);
 		createSegment(fpa, null, "FLASH", 0xA0200000L, 128 * KB, true, false, log);
 		createSegment(fpa, null, "AICA_RAM", 0xA0800000L, (flavor == Flavor.Dreamcast ? 2 : 8) * MB, true, false, log);
-		createSegment(fpa, null, "VRAM64", 0x84000000L, (flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? 16 : 8) * MB, true, false, log);
-		createSegment(fpa, null, "VRAM32", 0x85000000L, (flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? 16 : 8) * MB, true, false, log);
+		long vramSize = (flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? 16 : 8) * MB;
+		createSegment(fpa, null, "VRAM64", 0x84000000L, vramSize, true, false, log);
+		createSegment(fpa, null, "VRAM32", 0x85000000L, vramSize, true, false, log);
 		if (flavor == Flavor.Naomi2) {
-			createSegment(fpa, null, "VRAM64_2", 0x86000000L, 16 * MB, true, false, log);
-			createSegment(fpa, null, "VRAM32_2", 0x87000000L, 16 * MB, true, false, log);
+			createMirror(fpa, "VRAM64_2", 0x86000000L, 0x84000000L, vramSize, "VRAM CLXB", true, false, log);
+			createMirror(fpa, "VRAM32_2", 0x87000000L, 0x85000000L, vramSize, "VRAM CLXB", true, false, log);
 			createSegment(fpa, null, "ERAM", 0xAA000000L, 32 * MB, true, false, log);
 			createSegment(fpa, null, "ELANCMD", 0xA9000000L, 1 * MB, true, false, log);
 		}
 		
 		InputStream ramStream = provider.getInputStream(0L);
-		createSegment(fpa, ramStream, "RAM", ramBase, flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? RAM_SIZE * 2 : RAM_SIZE, true, true, log);
+		long ramSize = flavor == Flavor.Naomi || flavor == Flavor.Naomi2 ? RAM_SIZE * 2 : RAM_SIZE;
+		createSegment(fpa, ramStream, "RAM", ramBase, ramSize, true, true, log);
+		createMirror(fpa, "RAM.alt", (ramBase & 0x80000000L) != 0 ? ramBase & 0x7fffffffL : ramBase | 0x80000000L, ramBase, ramSize, 
+				"RAM mirror", true, true, log);
+		createMirror(fpa, "RAM.uncached", ramBase | 0xA0000000L, ramBase, ramSize, "RAM uncached", true, true, log);
 		
 		long entryPoint;
 		if (flavor == Flavor.Dreamcast)
@@ -143,10 +148,10 @@ public class DreamcastLoader extends BaseLoader {
 
 	@Override
 	public List<Option> getDefaultOptions(ByteProvider provider, LoadSpec loadSpec,
-			DomainObject domainObject, boolean isLoadIntoProgram)
+			DomainObject domainObject, boolean isLoadIntoProgram, boolean mirrorFsLayout)
 	{
 		List<Option> list =
-			super.getDefaultOptions(provider, loadSpec, domainObject, isLoadIntoProgram);
+			super.getDefaultOptions(provider, loadSpec, domainObject, isLoadIntoProgram, mirrorFsLayout);
 
 		list.add(new SystemFlavorOption(FLAVOR_OPTION, flavor));
 		list.add(new RAMBaseOption(RAM_BASE_OPTION, ramBase));
@@ -193,16 +198,11 @@ public class DreamcastLoader extends BaseLoader {
 		return super.validateOptions(provider, loadSpec, options, program);
 	}
 	
-	class VBROption extends Option {
-		public VBROption(Object value) {
-			super(VBR_OPTION, value, String.class, Loader.COMMAND_LINE_ARG_PREFIX + "-vbr");
+	class VBROption extends StringOption {
+		public VBROption(String value) {
+			super(VBR_OPTION, value, Loader.COMMAND_LINE_ARG_PREFIX + "-vbr", null, 
+					"vbr", false, "The VBR value used by this program");
 		}
-
-		@Override
-		public Option copy() {
-			return new VBROption(getValue());
-		}
-	
 	}
 
 	private void createBiosVector(FlatProgramAPI fpa, long laddr, String name, ByteProvider provider, MessageLog log) {
